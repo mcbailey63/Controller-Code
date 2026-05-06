@@ -277,7 +277,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help=(
-            "Standard digital output index [0..7] used for a custom tool toggle. "
+            "Tool digital output index [0..1] used for a custom tool toggle. "
             "Set to -1 to disable external-tool digital output control."
         ),
     )
@@ -291,13 +291,13 @@ def parse_args() -> argparse.Namespace:
         "--external-tool-active-high",
         action="store_true",
         default=True,
-        help="Drive the configured digital output high when the external tool is toggled on.",
+        help="Drive the configured tool digital output high when the external tool is toggled on.",
     )
     parser.add_argument(
         "--external-tool-active-low",
         dest="external_tool_active_high",
         action="store_false",
-        help="Drive the configured digital output low when the external tool is toggled on.",
+        help="Drive the configured tool digital output low when the external tool is toggled on.",
     )
     parser.add_argument(
         "--tool-mode-default",
@@ -945,6 +945,17 @@ def robot_requires_pause(receive: RTDEReceive) -> str | None:
     return None
 
 
+def set_external_tool_output(io: RTDEIO, output_index: int, signal: bool) -> None:
+    if not 0 <= output_index <= 1:
+        raise ValueError(
+            "Tool digital output index must be 0 or 1. "
+            "Use --external-tool-output -1 to disable external-tool control."
+        )
+
+    if not io.setToolDigitalOut(output_index, signal):
+        raise RuntimeError(f"Failed to set tool digital output {output_index}.")
+
+
 def disconnect_interface(interface: object | None) -> None:
     if interface is None:
         return
@@ -969,7 +980,7 @@ def connect_robot_session(
     ensure_io_connected(rtde_io)
 
     if external_tool_output >= 0:
-        rtde_io.setStandardDigitalOut(external_tool_output, external_tool_signal)
+        set_external_tool_output(rtde_io, external_tool_output, external_tool_signal)
 
     gripper = None
     if enable_gripper:
@@ -1035,7 +1046,7 @@ def reconnect_robot_session(
             ensure_connected(control, receive)
             ensure_io_connected(io)
             if external_tool_output >= 0:
-                io.setStandardDigitalOut(external_tool_output, external_tool_signal)
+                set_external_tool_output(io, external_tool_output, external_tool_signal)
             gripper = None
             if enable_gripper:
                 print("Re-activating gripper after reconnect...")
@@ -1182,7 +1193,7 @@ def main() -> int:
         if args.external_tool_output >= 0:
             print(
                 "External tool control: when the configured end effector is 'external', tap button "
-                f"{args.external_tool_button} to toggle standard digital output "
+                f"{args.external_tool_button} to toggle tool digital output "
                 f"{args.external_tool_output}."
             )
 
@@ -1402,13 +1413,9 @@ def main() -> int:
                     )
                     if rtde_io is None:
                         raise RuntimeError("RTDE I/O interface is not available.")
-                    if not rtde_io.setStandardDigitalOut(
-                        args.external_tool_output,
-                        output_signal,
-                    ):
-                        raise RuntimeError(
-                            f"Failed to set standard digital output {args.external_tool_output}."
-                        )
+                    set_external_tool_output(
+                        rtde_io, args.external_tool_output, output_signal
+                    )
                     print(
                         "\nExternal tool output "
                         f"{args.external_tool_output} set to "
